@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Gym Grind Tracker</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0e0e0e; color: white; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; overflow: hidden; touch-action: none; }
+canvas { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 0; }
+
+/* ── Top stats panel ── */
+#ui {
+  position: fixed; top: 12px; left: 12px; right: 12px; z-index: 100;
+  background: rgba(10,10,10,0.94); border: 0.5px solid rgba(255,255,255,0.12);
+  padding: 12px 14px; border-radius: 14px;
+}
+.row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; align-items:center; }
+select, input[type="text"], input[type="number"] {
+  background: rgba(255,255,255,0.08); border: 0.5px solid rgba(255,255,255,0.2);
+  color: white; padding: 7px 10px; border-radius: 8px; font-size: 16px;
+  -webkit-appearance: none; appearance: none;
+}
+select option { background: #1a1a1a; }
+input::placeholder { color: rgba(255,255,255,0.3); }
+.stats { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.stats + .stats { margin-top:5px; }
+.stat { font-size:12px; color:rgba(255,255,255,0.55); white-space:nowrap; }
+.stat span        { color:#7dff9b; font-weight:600; }
+.stat span.red    { color:#ff6b6b; }
+.stat span.yellow { color:#ffd93d; }
+.stat span.orange { color:#ffaa22; }
+.stat span.fire   { color:#ff6b22; }
+.stat.clickable   { cursor:pointer; user-select:none; }
+.stat.clickable:hover { color:rgba(255,255,255,0.85); }
+#rewardProgress { margin-top:8px; background:rgba(255,255,255,0.06); border-radius:4px; height:5px; overflow:hidden; }
+#rewardProgressBar { height:100%; border-radius:4px; background:linear-gradient(90deg,#1d9b4a,#7dff9b); width:0%; transition:width 0.7s cubic-bezier(0.4,0,0.2,1); }
+#muscleStatsRow { display:none; gap:5px; flex-wrap:wrap; margin-top:8px; padding-top:8px; border-top:0.5px solid rgba(255,255,255,0.06); }
+.muscle-chip { display:flex; align-items:center; gap:3px; font-size:10px; color:rgba(255,255,255,0.7); background:rgba(255,255,255,0.05); border-radius:20px; padding:3px 8px; white-space:nowrap; }
+.muscle-chip .mdot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.muscle-chip strong { color:white; margin-left:2px; }
+#msgRow { display:flex; justify-content:space-between; align-items:baseline; margin-top:5px; }
+#msg { font-size:11px; min-height:13px; transition:color 0.2s; font-weight:500; }
+#syncStatus { font-size:10px; color:rgba(255,255,255,0.3); }
+
+/* ── Backdrop ── */
+#popupBackdrop {
+  position:fixed; inset:0; z-index:398;
+  background:rgba(0,0,0,0.55);
+  opacity:0; pointer-events:none;
+  transition:opacity 0.28s ease;
+}
+#popupBackdrop.open { opacity:1; pointer-events:auto; }
+
+/* ══════════════════════════════════════════════
+   DAY VIEW — full screen, slides from below
+   ══════════════════════════════════════════════ */
+#dayPopup {
+  position:fixed; inset:0; z-index:400;
+  background:#111;
+  display:flex; flex-direction:column;
+  transform:translateY(100%);
+  transition:transform 0.32s cubic-bezier(0.32,0,0.15,1);
+  overflow:hidden;
+}
+#dayPopup.open { transform:translateY(0); }
+
+/* Header */
+.dv-header {
+  display:flex; align-items:center; gap:12px;
+  padding:12px 16px;
+  padding-top:calc(12px + env(safe-area-inset-top,0px));
+  border-bottom:0.5px solid rgba(255,255,255,0.09);
+  flex-shrink:0;
+  background:#111;
+}
+#btnClose {
+  background:rgba(255,255,255,0.09); border:0.5px solid rgba(255,255,255,0.14);
+  color:rgba(255,255,255,0.7); padding:7px 13px; border-radius:9px;
+  font-size:13px; cursor:pointer; flex-shrink:0;
+  -webkit-tap-highlight-color:transparent;
+}
+.dv-header-info { flex:1; min-width:0; }
+#dvTitle { font-size:17px; font-weight:700; color:white; }
+#dvStatus { font-size:11px; color:rgba(255,255,255,0.42); margin-top:2px; }
+
+/* Scrollable body */
+.dv-scroll {
+  flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; min-height:0;
+  padding-bottom:env(safe-area-inset-bottom,16px);
+}
+
+/* Muscle section */
+#dvMuscleRow { padding:12px 16px 0; }
+.dv-muscle-top {
+  display:flex; justify-content:space-between; align-items:center; margin-bottom:7px;
+}
+.dv-muscle-label { font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:rgba(255,255,255,0.3); }
+.muscle-skip { font-size:10px; color:rgba(255,255,255,0.22); cursor:pointer; padding:2px 5px; border-radius:4px; }
+.muscle-skip:hover { color:rgba(255,255,255,0.55); }
+#muscleGrid {
+  display:flex; flex-wrap:nowrap; gap:7px;
+  overflow-x:auto; -webkit-overflow-scrolling:touch;
+  scrollbar-width:none; -ms-overflow-style:none; padding-bottom:2px;
+}
+#muscleGrid::-webkit-scrollbar { display:none; }
+.muscle-btn {
+  padding:6px 11px; border-radius:20px;
+  border:0.5px solid rgba(255,255,255,0.12);
+  background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.6);
+  font-size:12px; cursor:pointer; transition:all 0.12s;
+  white-space:nowrap; -webkit-tap-highlight-color:transparent; user-select:none;
+}
+.muscle-btn.selected { font-weight:600; }
+#muscleHint { font-size:10px; color:rgba(255,255,255,0.28); margin-top:6px; min-height:14px; padding-left:2px; }
+
+/* Action buttons */
+.dv-actions { padding:12px 16px; display:flex; flex-direction:column; gap:7px; }
+.dv-actions button {
+  padding:11px 14px; border-radius:10px; border:none;
+  font-size:14px; font-weight:600; cursor:pointer; text-align:left;
+  -webkit-tap-highlight-color:transparent;
+}
+.btn-done  { background:#1d9b4a; color:white; }
+.btn-miss  { background:#bf1e1e; color:white; flex:1; }
+.btn-reset { background:rgba(255,255,255,0.09); color:rgba(255,255,255,0.7); flex:1; }
+.btn-row-2 { display:flex; gap:7px; }
+
+/* Section dividers */
+.dv-divider { height:0.5px; background:rgba(255,255,255,0.07); margin:0 16px; }
+
+/* ── Exercise section ── */
+.dv-ex-section { padding:14px 16px; }
+.dv-section-header {
+  display:flex; align-items:center; gap:7px; margin-bottom:10px;
+}
+.dv-section-label {
+  font-size:11px; font-weight:700; text-transform:uppercase;
+  letter-spacing:0.07em; color:rgba(255,255,255,0.38);
+}
+.dv-badge {
+  font-size:11px; color:rgba(255,255,255,0.55);
+  background:rgba(255,255,255,0.09); border-radius:10px; padding:1px 7px;
+}
+.dv-badge:empty { display:none; }
+
+/* Search + custom dropdown */
+.ex-search-wrap { position:relative; margin-bottom:6px; }
+.ex-search-wrap input[type="text"] {
+  width:100%; background:rgba(255,255,255,0.07);
+  border:0.5px solid rgba(255,255,255,0.18); color:white;
+  padding:10px 13px; border-radius:10px; font-size:15px;
+}
+.ex-search-wrap input::placeholder { color:rgba(255,255,255,0.3); }
+#exDropdown {
+  position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:60;
+  background:#1e1e1e; border:0.5px solid rgba(255,255,255,0.15);
+  border-radius:10px; max-height:220px; overflow-y:auto;
+  box-shadow:0 8px 32px rgba(0,0,0,0.6); display:none;
+}
+.ex-dropdown-item {
+  padding:9px 13px; cursor:pointer;
+  border-bottom:0.5px solid rgba(255,255,255,0.05);
+  -webkit-tap-highlight-color:transparent;
+}
+.ex-dropdown-item:last-child { border-bottom:none; }
+.ex-dropdown-item:hover, .ex-dropdown-item:active { background:rgba(255,255,255,0.07); }
+.ex-dd-name { font-size:13px; color:white; font-weight:500; }
+.ex-dd-meta { font-size:11px; color:rgba(255,255,255,0.38); margin-top:2px; }
+
+/* Filter chips */
+.ex-filter-row {
+  display:flex; flex-wrap:nowrap; gap:5px;
+  overflow-x:auto; -webkit-overflow-scrolling:touch;
+  scrollbar-width:none; -ms-overflow-style:none;
+  padding-bottom:3px; margin-bottom:6px;
+}
+.ex-filter-row::-webkit-scrollbar { display:none; }
+.ex-filter-chip {
+  padding:4px 10px; border-radius:14px;
+  border:0.5px solid rgba(255,255,255,0.12);
+  background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.5);
+  font-size:11px; cursor:pointer; white-space:nowrap; flex-shrink:0;
+  -webkit-tap-highlight-color:transparent; transition:all 0.1s;
+}
+.ex-filter-chip.active {
+  background:rgba(125,255,155,0.15); border-color:rgba(125,255,155,0.4); color:#7dff9b;
+}
+.ex-filter-chip:hover:not(.active) { background:rgba(255,255,255,0.10); }
+
+/* Exercise info card */
+.ex-info-card {
+  background:rgba(255,255,255,0.04); border-radius:8px;
+  padding:6px 10px; display:flex; gap:5px; align-items:center;
+  flex-wrap:wrap; margin-bottom:6px;
+}
+.ex-info-muscle { font-size:11px; color:rgba(160,220,255,0.85); font-weight:600; }
+.ex-info-badge {
+  font-size:10px; color:rgba(255,255,255,0.42);
+  background:rgba(255,255,255,0.07); border-radius:10px; padding:1px 7px; white-space:nowrap;
+}
+.ex-info-video {
+  margin-left:auto; font-size:11px; color:#5ab4ff; text-decoration:none;
+  white-space:nowrap; padding:2px 8px; background:rgba(90,180,255,0.13); border-radius:6px;
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* Input row: sets × weight × reps + add */
+.ex-inputs {
+  display:flex; gap:5px; align-items:center; margin-bottom:7px;
+}
+.ex-inputs input[type="number"] {
+  flex:1; background:rgba(255,255,255,0.07);
+  border:0.5px solid rgba(255,255,255,0.18); color:white;
+  padding:8px 7px; border-radius:9px; font-size:14px; min-width:0;
+}
+.ex-x { color:rgba(255,255,255,0.35); font-size:13px; flex-shrink:0; }
+.ex-add-btn {
+  background:#1d9b4a; color:white; border:none;
+  padding:8px 16px; border-radius:9px; font-size:20px;
+  cursor:pointer; flex-shrink:0; font-weight:700;
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* Superset + PR row */
+.ex-bottom-row {
+  display:flex; align-items:center; gap:8px; margin-bottom:12px;
+}
+.btn-superset {
+  padding:5px 11px; border-radius:8px;
+  border:0.5px solid rgba(255,255,255,0.15);
+  background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.55);
+  font-size:11px; font-weight:600; cursor:pointer; flex-shrink:0;
+  -webkit-tap-highlight-color:transparent; transition:all 0.12s;
+}
+.btn-superset.active {
+  background:rgba(232,85,61,0.2); border-color:rgba(232,85,61,0.5); color:#e8553d;
+}
+#exPRHint { font-size:11px; color:rgba(255,210,60,0.8); flex:1; min-height:16px; }
+
+/* Sets list */
+#exSetsList { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
+.ex-group {
+  background:rgba(255,255,255,0.04); border-radius:10px;
+  border-left:3px solid transparent; overflow:hidden;
+}
+.ex-superset-label {
+  font-size:9px; font-weight:700; letter-spacing:0.1em;
+  padding:3px 12px; background:rgba(0,0,0,0.2); text-transform:uppercase;
+}
+.ex-group-header {
+  display:flex; align-items:flex-start; gap:8px; padding:10px 12px 8px;
+  border-bottom:0.5px solid rgba(255,255,255,0.06);
+}
+.ex-group-name {
+  font-size:14px; font-weight:700; color:white;
+  word-break:break-word; line-height:1.35; flex:1; min-width:0;
+}
+.ex-group-prog {
+  background:none; border:none; color:rgba(100,180,255,0.65);
+  cursor:pointer; padding:2px 4px; font-size:13px; flex-shrink:0; margin-top:1px;
+  -webkit-tap-highlight-color:transparent;
+}
+.ex-group-prog:hover { color:rgba(100,180,255,1); }
+.ex-set-row {
+  display:flex; align-items:center; gap:6px;
+  padding:7px 12px; border-bottom:0.5px solid rgba(255,255,255,0.04); font-size:12px;
+}
+.ex-set-row:last-child { border-bottom:none; }
+.ex-set-num { font-size:10px; color:rgba(255,255,255,0.22); width:16px; text-align:center; flex-shrink:0; }
+.ex-set-detail { color:rgba(255,255,255,0.6); flex:1; min-width:0; }
+.ex-set-del {
+  background:none; border:none; color:rgba(255,80,80,0.5);
+  cursor:pointer; padding:0 3px; font-size:13px; flex-shrink:0;
+}
+.ex-set-pr { font-size:10px; color:#ffd93d; margin-left:3px; }
+
+/* Routines button */
+.btn-routines {
+  width:100%; padding:10px 14px; border-radius:9px;
+  border:0.5px solid rgba(255,255,255,0.14);
+  background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.65);
+  font-size:13px; cursor:pointer; text-align:center;
+  -webkit-tap-highlight-color:transparent; font-weight:600; margin-bottom:2px;
+}
+.btn-routines:hover { background:rgba(255,255,255,0.10); color:white; }
+
+/* ── Photos section ── */
+.dv-photos-section { padding:14px 16px 20px; }
+.dv-photos-header {
+  display:flex; align-items:center; gap:7px; margin-bottom:10px;
+}
+#photoGrid { display:flex; gap:7px; flex-wrap:wrap; align-items:flex-start; }
+.photo-thumb {
+  width:70px; height:70px; border-radius:9px; object-fit:cover;
+  cursor:pointer; border:0.5px solid rgba(255,255,255,0.14);
+  transition:transform 0.12s; flex-shrink:0;
+}
+.photo-thumb:hover { transform:scale(1.06); }
+.photo-add-label {
+  width:70px; height:70px; border-radius:9px;
+  background:rgba(255,255,255,0.05); border:1px dashed rgba(255,255,255,0.18);
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:26px; color:rgba(255,255,255,0.35);
+  flex-shrink:0; transition:background 0.12s;
+}
+.photo-add-label:hover { background:rgba(255,255,255,0.09); }
+.photo-uploading {
+  width:70px; height:70px; border-radius:9px;
+  background:rgba(255,255,255,0.05);
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px; animation:spin 1s linear infinite; flex-shrink:0;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ── Routines sheet ── */
+#routinesSheet {
+  position:fixed; z-index:420; bottom:0; left:0; right:0;
+  background:#141414; border:0.5px solid rgba(255,255,255,0.14);
+  border-radius:20px 20px 0 0; display:flex; flex-direction:column;
+  max-height:74vh; overflow:hidden;
+  transform:translateY(100%); transition:transform 0.25s cubic-bezier(0.32,0,0.15,1);
+  padding-bottom:env(safe-area-inset-bottom,0); box-shadow:0 -8px 40px rgba(0,0,0,0.8);
+}
+#routinesSheet.open { transform:translateY(0); }
+.routines-sheet-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 18px 10px; border-bottom:0.5px solid rgba(255,255,255,0.07); flex-shrink:0;
+}
+.routines-sheet-title { font-size:15px; font-weight:700; }
+#btnCloseRoutinesSheet {
+  background:rgba(255,255,255,0.08); border:none; color:rgba(255,255,255,0.7);
+  padding:5px 11px; border-radius:8px; cursor:pointer; font-size:13px;
+  -webkit-tap-highlight-color:transparent;
+}
+.routines-sheet-tabs {
+  display:flex; flex-shrink:0; border-bottom:0.5px solid rgba(255,255,255,0.07);
+}
+.routines-tab {
+  flex:1; padding:11px 0; text-align:center; font-size:13px; font-weight:600;
+  cursor:pointer; color:rgba(255,255,255,0.45); border-bottom:2px solid transparent;
+  -webkit-tap-highlight-color:transparent; transition:color 0.15s;
+}
+.routines-tab.active { color:#7dff9b; border-bottom-color:#7dff9b; }
+#routinesSheetBody {
+  flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  padding:12px 18px 16px; min-height:0;
+}
+.routine-item {
+  display:flex; align-items:center; gap:7px;
+  padding:6px 2px; border-bottom:0.5px solid rgba(255,255,255,0.05); font-size:12px;
+}
+.routine-item:last-child { border-bottom:none; }
+.routine-item-info { flex:1; min-width:0; }
+.routine-item-name { font-weight:600; color:white; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.routine-item-detail { font-size:10px; color:rgba(255,255,255,0.38); margin-top:1px; }
+.routine-apply-btn {
+  background:rgba(29,155,74,0.85); color:white; border:none;
+  padding:4px 10px; border-radius:6px; font-size:11px; font-weight:600;
+  cursor:pointer; flex-shrink:0; -webkit-tap-highlight-color:transparent;
+}
+.routine-del-btn {
+  background:none; border:none; color:rgba(255,80,80,0.45);
+  cursor:pointer; font-size:13px; flex-shrink:0; padding:0 2px;
+}
+.routine-del-btn:hover { color:rgba(255,80,80,0.85); }
+#routinePickerEmpty { font-size:11px; color:rgba(255,255,255,0.28); text-align:center; padding:8px 0; }
+.save-routine-row { display:flex; gap:6px; align-items:center; }
+#routineNameInput {
+  flex:1; background:rgba(255,255,255,0.07);
+  border:0.5px solid rgba(255,255,255,0.2); color:white;
+  padding:7px 10px; border-radius:8px; font-size:13px; min-width:0;
+}
+#btnConfirmSaveRoutine {
+  background:#1d9b4a; color:white; border:none;
+  padding:7px 14px; border-radius:8px; font-size:14px; font-weight:700;
+  cursor:pointer; flex-shrink:0;
+}
+
+/* ── Gallery modal ── */
+#galleryModal {
+  position:fixed; inset:0; z-index:600;
+  background:rgba(0,0,0,0.93); display:none;
+  align-items:center; justify-content:center; flex-direction:column; gap:14px;
+}
+#galleryModal.open { display:flex; }
+#galleryImgWrap {
+  position:relative; max-width:92vw; max-height:68vh;
+  display:flex; align-items:center; justify-content:center;
+}
+#galleryImg { max-width:92vw; max-height:68vh; object-fit:contain; border-radius:10px; box-shadow:0 8px 40px rgba(0,0,0,0.7); }
+#gallerySpinner { font-size:36px; color:rgba(255,255,255,0.4); animation:spin 1s linear infinite; }
+#galleryCaption { font-size:12px; color:rgba(255,255,255,0.45); text-align:center; }
+#galleryNav { display:flex; gap:10px; align-items:center; }
+.gal-btn {
+  background:rgba(255,255,255,0.1); border:0.5px solid rgba(255,255,255,0.15);
+  color:white; padding:9px 18px; border-radius:10px; cursor:pointer;
+  font-size:15px; font-weight:600; -webkit-tap-highlight-color:transparent;
+}
+.gal-btn:hover { background:rgba(255,255,255,0.18); }
+.gal-btn:disabled { opacity:0.3; cursor:default; }
+#galleryCounter { font-size:11px; color:rgba(255,255,255,0.4); min-width:40px; text-align:center; }
+#galleryDel { background:rgba(191,30,30,0.75); }
+#galleryClose {
+  position:absolute; top:14px; right:14px;
+  background:rgba(255,255,255,0.1); border:none; color:white;
+  padding:7px 13px; border-radius:9px; cursor:pointer; font-size:13px; z-index:601;
+}
+
+/* ── Reward modal ── */
+#rewardModal {
+  position:fixed; inset:0; z-index:500;
+  background:rgba(0,0,0,0.78); display:none;
+  align-items:center; justify-content:center;
+}
+#rewardModal.open { display:flex; }
+#rewardCard {
+  background:#161616; border:0.5px solid rgba(255,255,255,0.15);
+  border-radius:16px; padding:24px; width:300px;
+}
+#rewardCard h2 { font-size:18px; margin-bottom:6px; }
+#rewardCard p  { font-size:12px; color:rgba(255,255,255,0.4); margin-bottom:16px; }
+#rewardCard input {
+  width:100%; margin-bottom:10px; background:rgba(255,255,255,0.08);
+  border:0.5px solid rgba(255,255,255,0.2); color:white;
+  padding:10px 12px; border-radius:8px; font-size:16px;
+}
+#rewardCard input::placeholder { color:rgba(255,255,255,0.3); }
+#rewardCard .modal-btns { display:flex; gap:8px; margin-top:4px; }
+#rewardCard button { flex:1; padding:10px; border-radius:10px; border:none; font-size:14px; font-weight:600; cursor:pointer; }
+#btnSaveReward   { background:#22aa55; color:white; }
+#btnCancelReward { background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.6); }
+
+/* ── Progress modal ── */
+#progressModal {
+  position:fixed; inset:0; z-index:450;
+  background:rgba(0,0,0,0.82); display:none;
+  align-items:flex-end; justify-content:center;
+}
+#progressModal.open { display:flex; }
+#progressCard {
+  background:#121212; border:0.5px solid rgba(255,255,255,0.13);
+  border-radius:18px 18px 0 0; width:100%; max-width:520px;
+  max-height:88vh; display:flex; flex-direction:column; overflow:hidden;
+  padding-bottom:env(safe-area-inset-bottom,0);
+  animation:slideUp 0.22s ease;
+}
+@keyframes slideUp { from { transform:translateY(60px); opacity:0; } to { transform:none; opacity:1; } }
+.prog-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 18px 10px; border-bottom:0.5px solid rgba(255,255,255,0.07); flex-shrink:0;
+}
+.prog-header-title { font-size:15px; font-weight:700; }
+#progClose {
+  background:rgba(255,255,255,0.08); border:none; color:rgba(255,255,255,0.7);
+  padding:5px 11px; border-radius:8px; cursor:pointer; font-size:13px;
+  -webkit-tap-highlight-color:transparent;
+}
+.prog-search-row { padding:10px 18px 4px; flex-shrink:0; }
+#progExSearch {
+  width:100%; background:rgba(255,255,255,0.07);
+  border:0.5px solid rgba(255,255,255,0.18); color:white;
+  padding:9px 13px; border-radius:10px; font-size:15px;
+}
+#progContent { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:8px 18px 20px; min-height:0; }
+#progEmpty { color:rgba(255,255,255,0.3); font-size:13px; text-align:center; padding:40px 20px; }
+#progStatStrip { display:flex; gap:10px; flex-wrap:wrap; margin:10px 0 12px; }
+.prog-stat { background:rgba(255,255,255,0.05); border-radius:10px; padding:8px 12px; flex:1; min-width:80px; }
+.prog-stat-label { font-size:9px; text-transform:uppercase; letter-spacing:0.08em; color:rgba(255,255,255,0.35); margin-bottom:3px; }
+.prog-stat-val   { font-size:16px; font-weight:700; color:white; }
+.prog-stat-val.gold  { color:#ffd93d; }
+.prog-stat-val.green { color:#7dff9b; }
+#progChartWrap { background:rgba(255,255,255,0.03); border-radius:10px; padding:4px 0 0; margin-bottom:14px; overflow:hidden; }
+#progChart { width:100%; display:block; }
+.prog-hist-title { font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:rgba(255,255,255,0.3); margin-bottom:7px; }
+.prog-session { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:0.5px solid rgba(255,255,255,0.05); font-size:12px; }
+.prog-session:last-child { border-bottom:none; }
+.prog-session-date   { color:rgba(255,255,255,0.38); min-width:52px; }
+.prog-session-weight { font-weight:700; color:white; }
+.prog-session-reps   { color:rgba(255,255,255,0.5); }
+.prog-session-1rm    { color:rgba(255,200,60,0.7); font-size:10px; margin-left:auto; }
+.prog-session-pr     { font-size:10px; color:#ffd93d; margin-left:4px; }
+
+/* ── Mode tag ── */
+#modeTag {
+  position:fixed; bottom:28px; left:50%; transform:translateX(-50%);
+  font-size:11px; color:rgba(255,255,255,0.22); pointer-events:none; z-index:100;
+  white-space:nowrap; transition:color 0.3s;
+}
+</style>
+</head>
+<body>
+
+<!-- Stats panel -->
+<div id="ui">
+  <div class="row">
+    <select id="monthSel"></select>
+    <select id="yearSel"></select>
+    <button id="rewardBtn" style="background:rgba(255,255,255,0.08);border:0.5px solid rgba(255,255,255,0.2);color:white;padding:7px 12px;border-radius:8px;font-size:14px;cursor:pointer;flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🎯 Recompensa</button>
+  </div>
+  <div class="stats">
+    <div class="stat">💰 $<span id="sPerGym">0</span>/día</div>
+    <div class="stat">✅ <span id="sDone">0</span> gym</div>
+    <div class="stat">❌ <span id="sFail">0</span> fallas</div>
+    <div class="stat">🏆 $<span id="sEarned">0</span></div>
+    <div class="stat clickable" id="statsBtn" title="Ver progresión">📈 Stats</div>
+    <div class="stat" id="penaltyInfo" style="display:none">⚠️ <span id="sPenalty" class="yellow"></span></div>
+  </div>
+  <div class="stats">
+    <div class="stat">🔥 <span id="sStreak">0</span> racha</div>
+    <div class="stat">📊 <span id="sCompletion">0</span>%</div>
+    <div class="stat clickable" id="weekStatEl" title="Toca para cambiar meta semanal">Sem: <span id="sWeek">0</span>/<span id="sWeekGoal">4</span></div>
+    <div class="stat">🎯 <span id="sReward">—</span></div>
+  </div>
+  <div id="rewardProgress"><div id="rewardProgressBar"></div></div>
+  <div id="muscleStatsRow"></div>
+  <div id="msgRow">
+    <div id="msg"></div>
+    <div id="syncStatus">⏳ Conectando…</div>
+  </div>
+</div>
+
+<!-- Backdrop -->
+<div id="popupBackdrop"></div>
+
+<!-- ═══════════════════════════════════════════
+     DAY VIEW — full screen panel
+     ═══════════════════════════════════════════ -->
+<div id="dayPopup">
+
+  <!-- Sticky header -->
+  <div class="dv-header">
+    <button id="btnClose">✕ Cerrar</button>
+    <div class="dv-header-info">
+      <div id="dvTitle">Día</div>
+      <div id="dvStatus"></div>
+    </div>
+  </div>
+
+  <!-- Scrollable content -->
+  <div class="dv-scroll">
+
+    <!-- Muscle group pills -->
+    <div id="dvMuscleRow">
+      <div class="dv-muscle-top">
+        <span class="dv-muscle-label">Grupo muscular</span>
+        <span class="muscle-skip" id="skipMuscle">limpiar ×</span>
+      </div>
+      <div id="muscleGrid"></div>
+      <div id="muscleHint"></div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="dv-actions">
+      <button class="btn-done"  id="btnDone">✅ Gym hecho</button>
+      <div class="btn-row-2">
+        <button class="btn-miss"  id="btnMiss">❌ Falla</button>
+        <button class="btn-reset" id="btnReset">⬜ Quitar</button>
+      </div>
+    </div>
+
+    <div class="dv-divider"></div>
+
+    <!-- ── Exercise section ── -->
+    <div class="dv-ex-section">
+      <div class="dv-section-header">
+        <span class="dv-section-label">💪 Ejercicios</span>
+        <span id="exerciseCountBadge" class="dv-badge"></span>
+      </div>
+
+      <!-- Search input + custom dropdown -->
+      <div class="ex-search-wrap">
+        <input type="text" id="exName" placeholder="Buscar ejercicio…" autocomplete="off">
+        <div id="exDropdown"></div>
+      </div>
+
+      <!-- Muscle filter -->
+      <div class="ex-filter-row" id="exFilterMuscle"></div>
+      <!-- Equipment filter -->
+      <div class="ex-filter-row" id="exFilterEquip"></div>
+
+      <!-- Exercise info card -->
+      <div id="exInfoCard" class="ex-info-card" style="display:none"></div>
+
+      <!-- Sets × weight × reps + add button -->
+      <div class="ex-inputs">
+        <input type="number" id="exSets"   placeholder="series" min="1" max="20" style="max-width:62px">
+        <span class="ex-x">×</span>
+        <input type="number" id="exWeight" placeholder="kg" step="0.5" min="0">
+        <span class="ex-x">×</span>
+        <input type="number" id="exReps"   placeholder="reps" min="1" max="999">
+        <button class="ex-add-btn" id="exAddBtn">＋</button>
+      </div>
+
+      <!-- Superset toggle + PR hint -->
+      <div class="ex-bottom-row">
+        <button class="btn-superset" id="btnSuperset">⟳ Biserie</button>
+        <div id="exPRHint"></div>
+      </div>
+
+      <!-- Exercise groups -->
+      <div id="exSetsList"></div>
+
+      <!-- Routines -->
+      <button class="btn-routines" id="btnRoutines">💪 Mis rutinas</button>
+    </div>
+
+    <div class="dv-divider"></div>
+
+    <!-- ── Photos section ── -->
+    <div class="dv-photos-section">
+      <div class="dv-photos-header">
+        <span class="dv-section-label">📸 Fotos</span>
+        <span id="photoCountBadge" class="dv-badge"></span>
+      </div>
+      <div id="photoGrid">
+        <label class="photo-add-label" id="photoAddLabel" title="Agregar foto">
+          +
+          <input type="file" accept="image/*" id="photoInput" style="display:none">
+        </label>
+      </div>
+    </div>
+
+  </div><!-- /.dv-scroll -->
+</div><!-- /#dayPopup -->
+
+<!-- ── Routines sheet ── -->
+<div id="routinesSheet">
+  <div class="sheet-drag-handle" style="width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,0.18);margin:10px auto 0;flex-shrink:0;"></div>
+  <div class="routines-sheet-header">
+    <span class="routines-sheet-title">💪 Rutinas</span>
+    <button id="btnCloseRoutinesSheet">✕ Cerrar</button>
+  </div>
+  <div class="routines-sheet-tabs">
+    <div class="routines-tab active" id="tabApply">📋 Aplicar</div>
+    <div class="routines-tab" id="tabSave">💾 Guardar</div>
+  </div>
+  <div id="routinesSheetBody">
+    <div id="routinesApplyPanel">
+      <div id="routinePickerList"></div>
+      <div id="routinePickerEmpty" style="display:none">Sin rutinas guardadas aún</div>
+    </div>
+    <div id="routinesSavePanel" style="display:none">
+      <p style="font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:10px">Guarda los ejercicios de hoy como plantilla reutilizable.</p>
+      <div class="save-routine-row">
+        <input type="text" id="routineNameInput" placeholder="Nombre de la rutina…" autocomplete="off">
+        <button id="btnConfirmSaveRoutine">✓</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Gallery modal ── -->
+<div id="galleryModal">
+  <button id="galleryClose">✕</button>
+  <div id="galleryImgWrap">
+    <div id="gallerySpinner" style="display:none">⏳</div>
+    <img id="galleryImg" src="" alt="" style="display:none">
+  </div>
+  <div id="galleryCaption"></div>
+  <div id="galleryNav">
+    <button class="gal-btn" id="galleryPrev">◀</button>
+    <span id="galleryCounter">1/1</span>
+    <button class="gal-btn" id="galleryNext">▶</button>
+    <button class="gal-btn" id="galleryDel">🗑</button>
+  </div>
+</div>
+
+<!-- ── Reward modal ── -->
+<div id="rewardModal">
+  <div id="rewardCard">
+    <h2>Nueva recompensa</h2>
+    <p>Si no la cumplís en 30 días, se penaliza un 25%.<br>Los fines de semana cuentan 3×.</p>
+    <input id="modalRewardName" type="text" placeholder="¿Qué querés ganar?">
+    <input id="modalRewardCost" type="number" placeholder="Valor en $">
+    <div class="modal-btns">
+      <button id="btnSaveReward">Guardar</button>
+      <button id="btnCancelReward">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Progress modal ── -->
+<div id="progressModal">
+  <div id="progressCard">
+    <div class="prog-header">
+      <span class="prog-header-title">📈 Progresión</span>
+      <button id="progClose">✕ Cerrar</button>
+    </div>
+    <div class="prog-search-row">
+      <input type="text" id="progExSearch" placeholder="Buscar ejercicio…" autocomplete="off">
+    </div>
+    <div id="progContent">
+      <div id="progEmpty">Seleccioná un ejercicio para ver su progresión</div>
+      <div id="progStatStrip" style="display:none"></div>
+      <div id="progChartWrap" style="display:none">
+        <svg id="progChart" height="150"></svg>
+      </div>
+      <div id="progHistWrap" style="display:none">
+        <div class="prog-hist-title">Historial de sesiones</div>
+        <div id="progHistList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="modeTag">✋ Paneo · 2° tap rápido = órbita · 2 dedos = zoom</div>
+
+<!-- Scripts: load order matters — each depends on globals from previous files -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/constants.js"></script>
+<script src="js/analytics.js"></script>
+<script src="js/data.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/exercises.js"></script>
+<script src="js/photos.js"></script>
+<script src="js/routines.js"></script>
+<script src="js/progress.js"></script>
+<script src="js/day-view.js"></script>
+<script src="js/three-scene.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

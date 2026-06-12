@@ -1,11 +1,21 @@
 'use client';
 import { useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { useAppStore } from '@/store/appStore';
 import StatsPanel from '@/components/ui/StatsPanel';
-import CalendarGrid from '@/components/calendar/CalendarGrid';
 import DayView from '@/components/day-view/DayView';
 import Toast from '@/components/ui/Toast';
 import RewardModal from '@/components/ui/RewardModal';
+
+// WebGL only exists in the browser — skip prerender for the 3D calendar.
+const Calendar3D = dynamic(() => import('@/components/calendar/Calendar3D'), {
+  ssr: false,
+  loading: () => (
+    <div className="absolute inset-0 flex items-center justify-center text-white/30 text-sm">
+      Cargando calendario 3D…
+    </div>
+  ),
+});
 
 export default function GymApp() {
   useEffect(() => {
@@ -14,10 +24,10 @@ export default function GymApp() {
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-[#0a0a0a] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 bg-[#0a0a0a] overflow-hidden">
       <StatsPanel />
-      <main className="flex-1 overflow-y-auto pt-12">
-        <CalendarGrid />
+      <main className="absolute inset-0">
+        <Calendar3D />
       </main>
       <DayView />
       <Toast />

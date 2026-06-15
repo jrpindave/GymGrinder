@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { rpc, supabase } from '@/lib/supabase';
 import {
-  calcStreak, calcCompletion, calcWeekDone,
+  calcStreak, calcCompletion, calcWeekDone, calcMonthCounts,
   getMotivationalMsg, isWeekend,
 } from '@/lib/analytics';
 import { WEEK_GOALS } from '@/lib/constants';
@@ -482,5 +482,28 @@ export function useCalcStats() {
   const streak = calcStreak(monthCache, curYear, curMonth, today);
   const completion = calcCompletion(monthCache, curYear, curMonth, today);
   const { done: weekDone } = calcWeekDone(monthCache, curYear, curMonth, today, weeklyGoal);
-  return { streak, completion, weekDone };
+  const { done, miss, weekendBonus } = calcMonthCounts(monthCache, curYear, curMonth);
+
+  const reward = monthCache.reward;
+  const valuePerDay = monthCache.value_per_day ? Math.round(monthCache.value_per_day) : 0;
+  const earned = reward ? Math.round(reward.current_amount) : 0;
+  const rewardPct =
+    reward && reward.target_amount > 0
+      ? Math.round((reward.current_amount / reward.target_amount) * 100)
+      : 0;
+
+  // Penalty / deadline warning (mirrors original updateUI logic)
+  let penalty: string | null = null;
+  if (reward?.penalized) {
+    penalty = 'Penalizado 25%';
+  } else if (reward?.deadline_at) {
+    const dLeft = Math.ceil((new Date(reward.deadline_at).getTime() - today.getTime()) / 86400000);
+    if (dLeft <= 7 && dLeft > 0) penalty = `⏰ ${dLeft}d para penalización`;
+  }
+
+  return {
+    streak, completion, weekDone, weeklyGoal,
+    done, miss, weekendBonus,
+    reward, valuePerDay, earned, rewardPct, penalty,
+  };
 }

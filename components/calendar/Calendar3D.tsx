@@ -10,7 +10,6 @@ import { MUSCLES, MUSCLE_COLORS, DAYS_ES } from '@/lib/constants';
 import { daysInMonth, getCacheDayState, getCacheDayMuscle } from '@/lib/analytics';
 import { makeTopTex, makeFrontTex, hexToInt } from '@/lib/cube-textures';
 import type { MonthCache } from '@/lib/types';
-import MonthNav from './MonthNav';
 
 const GAP = 2.0;
 const SIZE = 1.35;
@@ -204,12 +203,6 @@ export default function Calendar3D() {
 
   return (
     <div className="absolute inset-0">
-      <div className="absolute top-12 left-0 right-0 z-10 pointer-events-none">
-        <div className="pointer-events-auto">
-          <MonthNav />
-        </div>
-      </div>
-
       <Canvas
         dpr={[1, 2]}
         camera={{ fov: 50, near: 0.1, far: 1000, position: [5.42, 18.05, 14.85] }}

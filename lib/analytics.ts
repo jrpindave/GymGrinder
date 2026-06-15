@@ -85,6 +85,22 @@ export function calcWeekDone(
   return { done, goal: weeklyGoal };
 }
 
+export function calcMonthCounts(
+  cache: MonthCache,
+  curYear: number,
+  curMonth: number
+): { done: number; miss: number; weekendBonus: number } {
+  const total = daysInMonth(curYear, curMonth);
+  let done = 0, miss = 0, weekendBonus = 0;
+  for (let d = 1; d <= total; d++) {
+    const s = getDayState(cache, d);
+    if (s === 'done' || s === 'weekend_bonus') done++;
+    if (s === 'miss') miss++;
+    if (s === 'weekend_bonus') weekendBonus++;
+  }
+  return { done, miss, weekendBonus };
+}
+
 export function calcMuscleStats(
   cache: MonthCache,
   curYear: number,
